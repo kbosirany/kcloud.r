@@ -169,7 +169,9 @@ test_that("cloud_upload() creates the folders and invalidates the cache", {
 
   cached <- suppressMessages(cloud_path(st, "out/old.csv"))
   cloud_upload(st, src, "out/run 1/")
-  expect_equal(rawToChar(server$files[["out/run 1/sub/b.csv"]]), "b\n")
+  # writeLines() ends the lines with \r\n on Windows
+  uploaded <- rawToChar(server$files[["out/run 1/sub/b.csv"]])
+  expect_equal(sub("\r?\n$", "", uploaded), "b")
   expect_true(all(c("run 1", "run 1/sub") %in% sub("^out/", "",
                                                    server$dirs)))
   mkcol <- grep("^MKCOL", server$requests, value = TRUE)
