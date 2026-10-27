@@ -1,17 +1,40 @@
 Package: kcloud.r
 Type: Package
-Title: What the Package Does (Title Case)
-Version: 0.1.0
+Title: One API for Local, 'Nextcloud', 'S3' and 'rclone' Data Storages
+Version: 0.0.0.9000
 Authors@R: c(
     person(
-      "Jane", "Doe",
-      email = "jane@example.com",
-      role = c("aut", "cre")
+      given = c("Kevin", "Bosirany"),
+      family = "Orlando",
+      email = "kevinbosirany@gmail.com",
+      role = c("aut", "cre"),
+      comment = c(ORCID = "0009-0009-2784-3108")
     )
   )
-Description: More about what it does (maybe more than one line).
-    Continuation lines should be indented.
-License: What license is it under?
+Description: Read and write data files with the same functions wherever
+    they are stored: on a local disk or on 'Nextcloud' (public link or
+    account, through 'WebDAV'), and soon in 'S3' buckets and 'rclone'
+    remotes. Remote files are downloaded into a persistent cache whose
+    freshness is checked with the 'ETag' of the files and whose size is
+    bounded. Storages are described in a 'config.yml' file, with the
+    secrets read from environment variables.
+License: MIT + file LICENSE
+URL: https://github.com/kbosirany/kcloud.r
+BugReports: https://github.com/kbosirany/kcloud.r/issues
+Depends:
+    R (>= 4.0.0)
+Imports:
+    config,
+    curl,
+    httr2 (>= 1.1.0),
+    jsonlite,
+    tools,
+    utils,
+    xml2
+Suggests:
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
 Encoding: UTF-8
-LazyData: true
-Config/roxygen2/version: 8.1.0
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.1
