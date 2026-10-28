@@ -1,6 +1,7 @@
 # kcloud.r : proposition d'API
 
-Statut : proposition, 2026-10-27. Rien n'est codé.
+Statut : proposition du 2026-10-27, implémentée en v0.1.0 (sauf `s3` et
+`rclone`) le 2026-10-28.
 
 ## 1. Objectif et périmètre
 
@@ -136,7 +137,7 @@ cloud_delete(storage, path)                      # v0.2
 cloud_exists(storage, path)                      # vectorisé -> logical
 cloud_list(
   storage, path = "", recursive = FALSE, pattern = NULL,
-  max_age = 0, workers = 16
+  max_age = 0, workers = NULL   # 4 pour Nextcloud, 16 sinon
 )
 ```
 
@@ -176,10 +177,14 @@ config) :
 
 - tant qu'un fichier a moins de `max_age`, on le lit dans le cache sans
   aucune requête réseau ;
-- au-delà, on fait une **requête conditionnelle** (`If-None-Match` avec
-  l'ETag noté). Si le fichier distant n'a pas changé, le serveur répond
-  304 : rien n'est retéléchargé et le compteur de fraîcheur repart à
-  zéro. S'il a changé, on télécharge la nouvelle version.
+- au-delà, une **requête légère** (PROPFIND sur Nextcloud, HEAD sur S3)
+  donne l'ETag distant, que l'on compare à celui noté. S'il est le même,
+  rien n'est retéléchargé et le compteur de fraîcheur repart à zéro.
+  Sinon, on télécharge la nouvelle version. Cette méthode marche aussi
+  pour les dossiers, dont Nextcloud met l'ETag à jour quand leur contenu
+  change.
+- si le serveur ne répond pas, on utilise la copie en cache, avec un
+  avertissement.
 - `max_age = 0` vérifie à chaque appel (une requête légère), et
   `max_age = Inf` ne vérifie jamais, comme fairify.
 
@@ -358,21 +363,31 @@ v1.0.
 
 ## 6. Ajouter un backend
 
-Les fonctions exportées de la section 4 sont toutes construites sur quatre
-génériques internes :
+Les fonctions exportées de la section 4 sont toutes construites sur des
+génériques internes, vectorisés pour paralléliser les requêtes :
 
 ```r
-.cloud_get(storage, path, path_local)    # télécharge un fichier
-.cloud_put(storage, path_local, path)    # envoie un fichier
-.cloud_stat(storage, path)               # NULL ou list(is_dir, size,
-                                         #   modified, etag)
-.cloud_ls(storage, path, recursive)      # data.frame (section 4.2)
+backend_get(storage, path, path_local, workers)  # télécharge, -> ETags
+backend_put(storage, path_local, path, workers)  # envoie des fichiers
+backend_mkdir(storage, path, workers)            # crée des dossiers
+backend_delete(storage, path)                    # supprime
+backend_stat(storage, path, workers)             # listing + `exists`
+backend_ls(storage, path, recursive, workers)    # listing (section 4.2)
 ```
 
 Les dossiers, le cache, `max_age`, `max_size` et `read_only` sont gérés
 une seule fois, dans le cœur. Un backend peut surcharger
-`.cloud_get_dir()` quand il a mieux à proposer que de télécharger les
-fichiers un par un : par exemple `?accept=zip` sur Nextcloud, ou `rclone copy`.
+`backend_get_dir()` quand il a mieux à proposer que de télécharger les
+fichiers un par un : par exemple `?accept=zip` sur Nextcloud, ou
+`rclone copy`.
+
+**Limitation du débit.** Le serveur Nextcloud de l'INRAE répond HTTP 429
+(Too Many Requests) quand on enchaîne les requêtes, y compris une liste
+récursive séquentielle d'un gros dossier. Chaque requête est donc
+réessayée jusqu'à 5 fois, en attendant le délai `Retry-After` donné par le
+serveur, ou en espaçant les essais de façon exponentielle. Par défaut,
+on n'envoie que 4 requêtes simultanées à Nextcloud (option
+`kcloud.r.workers`).
 
 Implémentation de chaque backend :
 
@@ -457,13 +472,12 @@ urltools.
 
 | version | contenu                                     | débloque           |
 |---------|---------------------------------------------|--------------------|
-| 0.1.0   | cœur, cache, config, `local`, `nextcloud`   | retrait de fairify |
-|         | public en lecture, ancien format            | (OptirrigDatasets) |
-| 0.2.0   | `nextcloud` authentifié (upload, list,      | écriture des       |
-|         | delete), `max_age` conditionnel, `max_size` | résultats          |
-| 0.3.0   | `s3` sur httr2, liste parallèle, cache des  | radis.api, PTGE    |
-|         | listes, `cloud_exists()` vectorisé          |                    |
-| 0.4.0   | `rclone`                                    | gros transferts    |
+| 0.1.0   | cœur, cache (`max_age`, `max_size`), config | retrait de fairify |
+|         | et ancien format, `local`, `nextcloud`      | (OptirrigDatasets) |
+|         | (lien public et compte), liste parallèle,   |                    |
+|         | cache des listes, `cloud_exists()` vectorisé|                    |
+| 0.2.0   | `s3` sur httr2                              | radis.api, PTGE    |
+| 0.3.0   | `rclone`                                    | gros transferts    |
 
 ## 11. Décisions
 
