@@ -29,7 +29,9 @@ Other operations:
 \code{\link[=cloud_download]{cloud_download()}},
 \code{\link[=cloud_list]{cloud_list()}},
 \code{\link[=cloud_path]{cloud_path()}},
+\code{\link[=cloud_sync]{cloud_sync()}},
 \code{\link[=cloud_upload]{cloud_upload()}},
-\code{\link[=cloud_url]{cloud_url()}}
+\code{\link[=cloud_url]{cloud_url()}},
+\code{\link[=cloud_vsi]{cloud_vsi()}}
 }
 \concept{operations}

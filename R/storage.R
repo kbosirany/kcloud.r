@@ -143,6 +143,96 @@ cloud_nextcloud <- function(url,
   )
 }
 
+#' S3 storage
+#'
+#' Files of an S3 bucket (AWS, or any S3 compatible server: MinIO, Ceph,
+#' OVH...), read and written with signed HTTP requests. The paths of the
+#' storage are the keys of the bucket below `prefix`.
+#'
+#' For a bucket with millions of keys, list the most precise folder
+#' possible with [cloud_list()]: the server only filters by prefix, and
+#' returns at most 1000 keys per request.
+#'
+#' A file bigger than 64 MB (option `kcloud.r.s3_chunk_size`, in bytes) is
+#' downloaded in parallel chunks. If the download is interrupted, running it
+#' again only fetches the missing chunks, kept in the `.parts` folder of the
+#' cache. A file bigger than `max_size` is refused, once its size is known
+#' (after its first chunk).
+#'
+#' @param bucket Name of the bucket.
+#' @param prefix Folder of the bucket used as the root of the storage.
+#' @param region Region of the bucket. By default the environment variable
+#'   `AWS_DEFAULT_REGION`, or `us-east-1`.
+#' @param endpoint URL of the S3 server, for a server that is not AWS
+#'   (`https://host`). By default the AWS endpoint of `region`.
+#' @param anonymous If `TRUE`, the requests are not signed: public bucket.
+#'   Otherwise the credentials are read from the environment variables
+#'   named by `access_key_env` and `secret_access_key_env`, and from
+#'   `AWS_SESSION_TOKEN` when it is set.
+#' @param access_key_env,secret_access_key_env Names of the environment
+#'   variables holding the credentials. Never write a secret in a script.
+#' @param read_only If `TRUE`, [cloud_upload()] and [cloud_delete()] fail.
+#'   By default `TRUE` when `anonymous`.
+#' @inheritParams cloud_nextcloud
+#'
+#' @return A `cloud_s3` storage object.
+#' @family storages
+#' @export
+#'
+#' @examples
+#' # Public bucket of Meteo-France (DRIAS and EXPLORE2 climate projections)
+#' cloud_s3("meteofrance-drias", endpoint = "https://object.files.data.gouv.fr",
+#'          anonymous = TRUE)
+cloud_s3 <- function(bucket,
+                     prefix = "",
+                     region = NULL,
+                     endpoint = NULL,
+                     anonymous = FALSE,
+                     access_key_env = "AWS_ACCESS_KEY_ID",
+                     secret_access_key_env = "AWS_SECRET_ACCESS_KEY",
+                     read_only = NULL,
+                     name = NULL,
+                     cache = NULL,
+                     max_age = 7,
+                     max_size = 10) {
+  check_string(bucket, "bucket")
+  check_flag(anonymous, "anonymous")
+  prefix <- dir_slash(remote_path(prefix))
+  region <- region %||% Sys.getenv("AWS_DEFAULT_REGION")
+  if (!nzchar(region)) region <- "us-east-1"
+  if (is.null(endpoint)) {
+    endpoint <- paste0("https://s3.", region, ".amazonaws.com")
+  }
+  check_string(endpoint, "endpoint")
+  endpoint <- sub("/+$", "", endpoint)
+  if (!grepl("^https?://", endpoint)) {
+    stop("`endpoint` must start with http:// or https://: ", endpoint,
+         call. = FALSE)
+  }
+  auth <- NULL
+  if (!anonymous) {
+    access_key <- Sys.getenv(access_key_env)
+    secret_key <- Sys.getenv(secret_access_key_env)
+    if (!nzchar(access_key) || !nzchar(secret_key)) {
+      stop("An S3 account needs the environment variables ",
+           access_key_env, " and ", secret_access_key_env,
+           " (or `anonymous = TRUE` for a public bucket).", call. = FALSE)
+    }
+    token <- Sys.getenv("AWS_SESSION_TOKEN")
+    auth <- make_auth_s3(access_key, secret_key,
+                         if (nzchar(token)) token, region)
+  }
+  read_only <- read_only %||% anonymous
+  name <- name %||% paste(bucket, strip_slash(prefix), sep = "_")
+  new_cloud_storage(
+    "s3", sub("_$", "", name), read_only,
+    bucket = bucket, prefix = prefix, region = region, endpoint = endpoint,
+    auth = auth, anonymous = anonymous, access_key_env = access_key_env,
+    secret_access_key_env = secret_access_key_env,
+    cache = cache, max_age = max_age, max_size = max_size
+  )
+}
+
 # The password stays in the closure: it is neither printed nor shown by
 # str().
 make_auth_basic <- function(user, password) {
@@ -173,6 +263,8 @@ storage_location <- function(storage) {
       if (!is.null(storage$user)) paste0(" (user ", storage$user, ")"),
       if (nzchar(storage$root)) paste0(", root ", storage$root)
     ),
+    s3 = paste0(storage$endpoint, "/", storage$bucket,
+                if (nzchar(storage$prefix)) paste0("/", storage$prefix)),
     storage$name
   )
 }
@@ -180,7 +272,7 @@ storage_location <- function(storage) {
 check_storage <- function(storage) {
   if (!inherits(storage, "cloud_storage")) {
     stop("`storage` must be a storage created by cloud_local(), ",
-         "cloud_nextcloud() or cloud_from_config().", call. = FALSE)
+         "cloud_nextcloud(), cloud_s3() or cloud_from_config().", call. = FALSE)
   }
   invisible(storage)
 }
