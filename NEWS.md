@@ -5,7 +5,8 @@
   switches from folder by folder to flat listings, and the usual
   operations, downloads of big files in parallel chunks that resume after
   an interruption, and `cloud_vsi()` to read a part of a remote file with
-  GDAL (`terra`, `stars`, `sf`) without downloading it (#5).
+  GDAL (`terra`, `stars`, `sf`) without downloading it, and `cloud_sync()`
+  to copy a folder from a storage to another, with resume (#5).
 
 * First version: storages `cloud_local()` and `cloud_nextcloud()` (public
   link or account, WebDAV), operations `cloud_path()`, `cloud_url()`,

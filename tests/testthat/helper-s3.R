@@ -12,6 +12,7 @@ local_fake_s3 <- function(files = list(), env = parent.frame()) {
   server$headers <- list()
   server$ranges <- character()
   server$refuse <- character()
+  server$deny <- character()
   httr2::local_mocked_responses(
     function(req) fake_s3_answer(server, req),
     env = env
@@ -118,6 +119,9 @@ fake_s3_storage <- function(...) {
 # GET of an object, with the Range and If-Match headers. `server$refuse`
 # lists the ranges answered with an error (403) to interrupt a download.
 fake_s3_get <- function(server, key, headers) {
+  if (key %in% server$deny) {
+    return(httr2::response(403))
+  }
   body <- server$files[[key]]
   etag <- paste0('"', server$etags[[key]], '"')
   range <- headers$Range

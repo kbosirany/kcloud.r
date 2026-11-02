@@ -75,6 +75,13 @@ To read a part of a big file, give it to GDAL instead of downloading it
 r <- terra::rast(cloud_vsi(st, "EXPLORE2-Hydro/.../niveau_GrilleFrance.nc"))
 ```
 
+To copy a folder to another storage (run it again to resume):
+
+```r
+to <- cloud_local("/data/drias")
+cloud_sync(st, to, "DRIAS2020_NEW/", pattern = "tasAdjust")
+```
+
 With credentials, set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 (never write them in a script). A recursive listing is parallel and adapts
 to the shape of the bucket, so it stays fast with millions of keys.
