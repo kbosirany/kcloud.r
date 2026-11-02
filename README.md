@@ -68,6 +68,13 @@ st <- cloud_s3("meteofrance-drias",
 cloud_list(st, "EXPLORE2-Hydro/", recursive = TRUE)  # 1.8 TB, a few seconds
 ```
 
+To read a part of a big file, give it to GDAL instead of downloading it
+(a map of a 2.6 GB NetCDF takes a few seconds):
+
+```r
+r <- terra::rast(cloud_vsi(st, "EXPLORE2-Hydro/.../niveau_GrilleFrance.nc"))
+```
+
 With credentials, set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 (never write them in a script). A recursive listing is parallel and adapts
 to the shape of the bucket, so it stays fast with millions of keys.

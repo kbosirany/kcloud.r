@@ -4,7 +4,8 @@
   requests (or `anonymous = TRUE`), a fast parallel recursive listing that
   switches from folder by folder to flat listings, and the usual
   operations, downloads of big files in parallel chunks that resume after
-  an interruption (#5).
+  an interruption, and `cloud_vsi()` to read a part of a remote file with
+  GDAL (`terra`, `stars`, `sf`) without downloading it (#5).
 
 * First version: storages `cloud_local()` and `cloud_nextcloud()` (public
   link or account, WebDAV), operations `cloud_path()`, `cloud_url()`,

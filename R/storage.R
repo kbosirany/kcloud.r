@@ -227,7 +227,9 @@ cloud_s3 <- function(bucket,
   new_cloud_storage(
     "s3", sub("_$", "", name), read_only,
     bucket = bucket, prefix = prefix, region = region, endpoint = endpoint,
-    auth = auth, cache = cache, max_age = max_age, max_size = max_size
+    auth = auth, anonymous = anonymous, access_key_env = access_key_env,
+    secret_access_key_env = secret_access_key_env,
+    cache = cache, max_age = max_age, max_size = max_size
   )
 }
 

@@ -38,3 +38,24 @@ test_that("the public DRIAS S3 bucket can be listed and read", {
   expect_equal(file.size(p), f$size)
   expect_true(cloud_exists(st, f$path))
 })
+
+test_that("terra reads a part of a remote DRIAS NetCDF through GDAL", {
+  skip_if(!nzchar(Sys.getenv("KCLOUD_TEST_ONLINE")),
+          "KCLOUD_TEST_ONLINE is not set")
+  skip_if_not_installed("terra")
+  skip_on_cran()
+  st <- cloud_s3("meteofrance-drias",
+                 endpoint = "https://object.files.data.gouv.fr",
+                 anonymous = TRUE)
+  f <- paste0(
+    "EXPLORE2-Hydro/EXPLORE2-2024_AQUI-FR/CNRM-CERFACS-CNRM-CM5/",
+    "CNRM-ALADIN63/historical/niveau_GrilleFrance_CNRM-CERFACS-CNRM-CM5_",
+    "historical_r1i1p1_CNRM-ALADIN63_v2_ADAMONT-France_BRGM-AquiFR_month_",
+    "19580801-20050731.nc"
+  )
+  r <- terra::rast(cloud_vsi(st, f))
+  expect_gte(terra::nlyr(r), 564)
+  # One time step is one chunk: a few MB are read, not the 2.6 GB.
+  v <- terra::values(r[[1]])
+  expect_length(v, 814 * 704)
+})

@@ -204,3 +204,24 @@ test_that("a file bigger than the cache limit is refused", {
   # Refused after the first chunk: nothing else was requested.
   expect_equal(server$ranges, "bytes=0-3")
 })
+
+test_that("cloud_vsi() gives the path GDAL reads with range requests", {
+  st <- cloud_s3("bkt", prefix = "p", endpoint = "https://s3.test",
+                 anonymous = TRUE)
+  expect_equal(cloud_vsi(st, "a", "x y.nc"),
+               "/vsicurl/https://s3.test/bkt/p/a/x%20y.nc")
+  expect_error(cloud_vsi(st, "a/"), "file")
+
+  withr::local_envvar(AWS_ACCESS_KEY_ID = "AKIA", AWS_SECRET_ACCESS_KEY = "k",
+                      AWS_S3_ENDPOINT = NA, AWS_VIRTUAL_HOSTING = NA)
+  st <- cloud_s3("bkt", prefix = "p", endpoint = "http://minio.test:9000")
+  expect_equal(cloud_vsi(st, "a.nc"), "/vsis3/bkt/p/a.nc")
+  expect_equal(Sys.getenv("AWS_S3_ENDPOINT"), "minio.test:9000")
+  expect_equal(Sys.getenv("AWS_HTTPS"), "NO")
+  expect_equal(Sys.getenv("AWS_VIRTUAL_HOSTING"), "FALSE")
+
+  loc <- cloud_local(withr::local_tempdir())
+  expect_equal(cloud_vsi(loc, "a", "b.nc"), file.path(loc$root, "a/b.nc"))
+  expect_error(cloud_vsi(cloud_nextcloud("https://nc.test/s/T"), "a"),
+               "no GDAL path")
+})
