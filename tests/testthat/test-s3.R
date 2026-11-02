@@ -141,3 +141,66 @@ test_that("a recursive listing switches to flat listings, same result", {
                c("t1/a/", "t1/a/b/", "t1/a/b/c/", "t1/a/b/c/f.nc",
                  "t1/a/g.nc"))
 })
+
+test_that("a big file is downloaded in parallel chunks", {
+  local_cache()
+  withr::local_options(kcloud.r.s3_chunk_size = 4)
+  server <- local_fake_s3(list("big.bin" = "0123456789", "small" = "abc",
+                               "empty" = ""))
+  st <- fake_s3_storage()
+  expect_equal(readChar(suppressMessages(cloud_path(st, "big.bin")), 99),
+               "0123456789")
+  expect_equal(server$ranges, c("bytes=0-3", "bytes=4-7", "bytes=8-9"))
+  # The chunks are removed once appended.
+  expect_length(list.files(file.path(cloud_cache_dir(st), ".parts")), 0)
+  # A file that fits in a chunk, or that is empty, needs a single request.
+  server$ranges <- character()
+  expect_equal(readChar(suppressMessages(cloud_path(st, "small")), 9), "abc")
+  expect_equal(server$ranges, "bytes=0-3")
+  expect_equal(file.size(suppressMessages(cloud_path(st, "empty"))), 0)
+})
+
+test_that("an interrupted download resumes where it stopped", {
+  local_cache()
+  withr::local_options(kcloud.r.s3_chunk_size = 4)
+  server <- local_fake_s3(list("big.bin" = "0123456789"))
+  st <- fake_s3_storage()
+  server$refuse <- "bytes=8-9"
+  expect_error(suppressMessages(cloud_path(st, "big.bin")), "403")
+  expect_false(file.exists(file.path(cloud_cache_dir(st), "big.bin")))
+  server$refuse <- character()
+  server$ranges <- character()
+  expect_equal(readChar(suppressMessages(cloud_path(st, "big.bin")), 99),
+               "0123456789")
+  # Only the first chunk and the missing one are requested again.
+  expect_equal(server$ranges, c("bytes=0-3", "bytes=8-9"))
+})
+
+test_that("a file that changes during its download is not assembled", {
+  local_cache()
+  withr::local_options(kcloud.r.s3_chunk_size = 4)
+  server <- local_fake_s3(list("big.bin" = "0123456789"))
+  st <- fake_s3_storage()
+  # The first chunk is read, then the file changes.
+  trace_get <- function(req) {
+    answer <- fake_s3_answer(server, req)
+    if (identical(req$headers$Range, "bytes=0-3")) {
+      server$etags[["big.bin"]] <- "changed"
+    }
+    answer
+  }
+  httr2::local_mocked_responses(trace_get)
+  expect_error(suppressMessages(cloud_path(st, "big.bin")), "changed")
+  expect_false(dir.exists(file.path(cloud_cache_dir(st), ".parts",
+                                    "e1-10")))
+})
+
+test_that("a file bigger than the cache limit is refused", {
+  local_cache()
+  withr::local_options(kcloud.r.s3_chunk_size = 4)
+  server <- local_fake_s3(list("big.bin" = "0123456789"))
+  st <- fake_s3_storage(max_size = 1e-9)
+  expect_error(suppressMessages(cloud_path(st, "big.bin")), "max_size")
+  # Refused after the first chunk: nothing else was requested.
+  expect_equal(server$ranges, "bytes=0-3")
+})

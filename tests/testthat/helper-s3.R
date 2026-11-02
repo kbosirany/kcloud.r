@@ -10,6 +10,8 @@ local_fake_s3 <- function(files = list(), env = parent.frame()) {
   server$etags <- stats::setNames(paste0("e", seq_along(files)), names(files))
   server$requests <- character()
   server$headers <- list()
+  server$ranges <- character()
+  server$refuse <- character()
   httr2::local_mocked_responses(
     function(req) fake_s3_answer(server, req),
     env = env
@@ -32,10 +34,7 @@ fake_s3_answer <- function(server, req) {
     } else if (!has) {
       httr2::response(404)
     } else {
-      httr2::response(
-        200, headers = list(ETag = paste0('"', server$etags[[key]], '"')),
-        body = server$files[[key]]
-      )
+      fake_s3_get(server, key, req$headers)
     },
     HEAD = if (!has) {
       httr2::response(404)
@@ -114,4 +113,36 @@ fake_s3_list <- function(server, query) {
 fake_s3_storage <- function(...) {
   cloud_s3("bkt", endpoint = s3_test_endpoint, anonymous = TRUE,
            name = "fake", ...)
+}
+
+# GET of an object, with the Range and If-Match headers. `server$refuse`
+# lists the ranges answered with an error (403) to interrupt a download.
+fake_s3_get <- function(server, key, headers) {
+  body <- server$files[[key]]
+  etag <- paste0('"', server$etags[[key]], '"')
+  range <- headers$Range
+  if (is.null(range)) {
+    return(httr2::response(200, headers = list(ETag = etag), body = body))
+  }
+  server$ranges <- c(server$ranges, range)
+  if (range %in% server$refuse) {
+    return(httr2::response(403))
+  }
+  if (!is.null(headers$`If-Match`) && headers$`If-Match` != etag) {
+    return(httr2::response(412))
+  }
+  if (length(body) == 0) {
+    return(httr2::response(416))
+  }
+  bounds <- as.numeric(strsplit(sub("bytes=", "", range), "-")[[1]])
+  last <- min(bounds[2], length(body) - 1)
+  httr2::response(
+    206,
+    headers = list(
+      ETag = etag,
+      `Content-Range` = sprintf("bytes %d-%d/%d", bounds[1], last,
+                                length(body))
+    ),
+    body = body[(bounds[1] + 1):(last + 1)]
+  )
 }

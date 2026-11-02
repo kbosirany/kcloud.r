@@ -3,7 +3,8 @@
 * `cloud_s3()`: S3 buckets (AWS, MinIO, Ceph, public buckets), with signed
   requests (or `anonymous = TRUE`), a fast parallel recursive listing that
   switches from folder by folder to flat listings, and the usual
-  operations (#5).
+  operations, downloads of big files in parallel chunks that resume after
+  an interruption (#5).
 
 * First version: storages `cloud_local()` and `cloud_nextcloud()` (public
   link or account, WebDAV), operations `cloud_path()`, `cloud_url()`,

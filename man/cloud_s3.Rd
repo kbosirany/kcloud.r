@@ -67,6 +67,12 @@ storage are the keys of the bucket below \code{prefix}.
 For a bucket with millions of keys, list the most precise folder
 possible with \code{\link[=cloud_list]{cloud_list()}}: the server only filters by prefix, and
 returns at most 1000 keys per request.
+
+A file bigger than 64 MB (option \code{kcloud.r.s3_chunk_size}, in bytes) is
+downloaded in parallel chunks. If the download is interrupted, running it
+again only fetches the missing chunks, kept in the \code{.parts} folder of the
+cache. A file bigger than \code{max_size} is refused, once its size is known
+(after its first chunk).
 }
 \examples{
 # Public bucket of Meteo-France (DRIAS and EXPLORE2 climate projections)

@@ -153,6 +153,12 @@ cloud_nextcloud <- function(url,
 #' possible with [cloud_list()]: the server only filters by prefix, and
 #' returns at most 1000 keys per request.
 #'
+#' A file bigger than 64 MB (option `kcloud.r.s3_chunk_size`, in bytes) is
+#' downloaded in parallel chunks. If the download is interrupted, running it
+#' again only fetches the missing chunks, kept in the `.parts` folder of the
+#' cache. A file bigger than `max_size` is refused, once its size is known
+#' (after its first chunk).
+#'
 #' @param bucket Name of the bucket.
 #' @param prefix Folder of the bucket used as the root of the storage.
 #' @param region Region of the bucket. By default the environment variable

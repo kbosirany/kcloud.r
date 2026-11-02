@@ -15,14 +15,22 @@ s3_key <- function(storage, path) {
   if (length(path) == 0) character() else paste0(storage$prefix, path)
 }
 
-s3_request <- function(storage, key = NULL, method = "GET") {
+# `transfer`: the request moves file data. It may last long: it only fails
+# when the transfer stalls (less than 1 kB/s for a minute).
+s3_request <- function(storage, key = NULL, method = "GET",
+                       transfer = FALSE) {
   req <- httr2::request(s3_url(storage, key))
   req <- httr2::req_method(req, method)
   req <- httr2::req_user_agent(
     req, "kcloud.r (https://github.com/kbosirany/kcloud.r)"
   )
   # A cold listing of a big bucket can take more than 20 seconds.
-  req <- httr2::req_timeout(req, 120)
+  req <- if (transfer) {
+    req <- httr2::req_timeout(req, 6 * 3600)
+    httr2::req_options(req, low_speed_limit = 1000L, low_speed_time = 60L)
+  } else {
+    httr2::req_timeout(req, 120)
+  }
   req <- httr2::req_retry(
     req, max_tries = 5, retry_on_failure = TRUE,
     is_transient = function(resp) {
@@ -263,27 +271,136 @@ backend_stat.cloud_s3 <- function(storage, path, workers) {
   out
 }
 
+# Writes the body of a response to `path` when httr2 did not stream it
+# there (mocked responses). The body of an empty file is empty.
+s3_save_body <- function(resp, path) {
+  if (!file.exists(path)) {
+    writeBin(if (httr2::resp_has_body(resp)) httr2::resp_body_raw(resp)
+             else raw(), path)
+  }
+  invisible(path)
+}
+
+# Size of the chunks a file is downloaded in.
+s3_chunk_size <- function() {
+  getOption("kcloud.r.s3_chunk_size", 64 * 1024^2)
+}
+
+# The first chunk of each file is requested with a Range header: its
+# response gives the size of the file (Content-Range), and holds all of a
+# small file. The other chunks of a big file are downloaded in parallel.
 #' @export
 backend_get.cloud_s3 <- function(storage, path, path_local, workers) {
   for (d in unique(dirname(path_local))) {
     dir.create(d, showWarnings = FALSE, recursive = TRUE)
   }
-  reqs <- lapply(path, function(p) s3_request(storage, s3_key(storage, p)))
+  chunk <- s3_chunk_size()
+  reqs <- lapply(path, function(p) {
+    req <- s3_request(storage, s3_key(storage, p), transfer = TRUE)
+    httr2::req_headers(req, Range = sprintf("bytes=0-%.0f", chunk - 1))
+  })
   resps <- nc_perform(reqs, paths = path_local, workers = workers)
   vapply(seq_along(resps), function(i) {
-    if (httr2::resp_status(resps[[i]]) != 200L) {
-      unlink(path_local[i])
-      s3_check(storage, resps[[i]], path[i], "download")
+    resp <- resps[[i]]
+    if (httr2::resp_status(resp) == 416L) {
+      # The range of an empty file cannot be satisfied.
+      resp <- httr2::req_perform(
+        s3_request(storage, s3_key(storage, path[i]), transfer = TRUE),
+        path = path_local[i]
+      )
     }
-    nc_save_body(resps[[i]], path_local[i])
-    nc_etag(httr2::resp_header(resps[[i]], "ETag"))
+    if (!httr2::resp_status(resp) %in% c(200L, 206L)) {
+      unlink(path_local[i])
+      s3_check(storage, resp, path[i], "download")
+    }
+    s3_save_body(resp, path_local[i])
+    etag <- nc_etag(httr2::resp_header(resp, "ETag"))
+    range <- httr2::resp_header(resp, "Content-Range")
+    total <- as.numeric(sub("^.*/", "", range %||% "bytes 0-0/0"))
+    if (httr2::resp_status(resp) == 206L && total > chunk) {
+      s3_get_rest(storage, path[i], path_local[i], total, etag, chunk)
+    }
+    etag
   }, character(1))
+}
+
+# Downloads the chunks after the first one, in parallel, then appends them
+# to `dest` (which holds the first). The chunks are kept in a folder named
+# after the ETag and the size: an interrupted download resumes there, and
+# a file that changed on the server is never mixed with its old version
+# (If-Match).
+s3_get_rest <- function(storage, path, dest, total, etag, chunk) {
+  max_bytes <- storage$max_size * 1024^3
+  if (total > max_bytes) {
+    unlink(dest)
+    stop("kcloud.r - download - ", storage$name, " - ", path, " is ",
+         round(total / 1024^3, 1), " GB, more than the cache limit ",
+         "(max_size = ", storage$max_size, " GB).", call. = FALSE)
+  }
+  starts <- seq(chunk, total - 1, by = chunk)
+  ends <- pmin(starts + chunk - 1, total - 1)
+  size <- ends - starts + 1
+  dir <- file.path(
+    cloud_cache_dir(storage), ".parts",
+    if (is.na(etag)) basename(tempfile("noetag")) else {
+      paste0(sanitize_name(etag), "-", format(total, scientific = FALSE))
+    }
+  )
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+  parts <- file.path(dir, seq_along(starts))
+  done <- file.exists(parts) & (file.size(parts) == size) %in% TRUE
+  todo <- which(!done)
+  reqs <- lapply(todo, function(j) {
+    req <- s3_request(storage, s3_key(storage, path), transfer = TRUE)
+    req <- httr2::req_headers(
+      req, Range = sprintf("bytes=%.0f-%.0f", starts[j], ends[j])
+    )
+    if (!is.na(etag)) {
+      req <- httr2::req_headers(req, `If-Match` = paste0('"', etag, '"'))
+    }
+    req
+  })
+  if (length(reqs)) {
+    resps <- nc_perform(reqs, paths = parts[todo],
+                        workers = workers_default(storage))
+    for (k in seq_along(todo)) {
+      j <- todo[k]
+      status <- httr2::resp_status(resps[[k]])
+      if (status == 412L) {
+        unlink(c(dest, dir), recursive = TRUE)
+        stop("kcloud.r - download - ", storage$name, " - ", path,
+             " changed on the server during the download.", call. = FALSE)
+      }
+      if (status != 206L) {
+        unlink(parts[j])
+        s3_check(storage, resps[[k]], path, "download", ok = 206L)
+      }
+      s3_save_body(resps[[k]], parts[j])
+      if (file.size(parts[j]) != size[j]) {
+        unlink(parts[j])
+        stop("kcloud.r - download - ", storage$name, " - incomplete chunk ",
+             "of ", path, ", run it again to resume.", call. = FALSE)
+      }
+    }
+  }
+  # Appending in order, and removing each chunk once appended, keeps the
+  # disk use close to one copy of the file.
+  for (part in parts) {
+    if (!file.append(dest, part)) {
+      stop("Cannot write: ", dest, call. = FALSE)
+    }
+    unlink(part)
+  }
+  unlink(dir, recursive = TRUE)
+  invisible()
 }
 
 #' @export
 backend_put.cloud_s3 <- function(storage, path_local, path, workers) {
   reqs <- Map(function(f, p) {
-    httr2::req_body_file(s3_request(storage, s3_key(storage, p), "PUT"), f)
+    httr2::req_body_file(
+      s3_request(storage, s3_key(storage, p), "PUT", transfer = TRUE), f
+    )
   }, path_local, path)
   resps <- nc_perform(unname(reqs), workers = workers)
   for (i in seq_along(resps)) {
