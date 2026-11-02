@@ -17,3 +17,24 @@ test_that("a real Nextcloud public link can be listed and read", {
   expect_equal(file.size(p), f$size)
   expect_true(cloud_exists(st, f$path))
 })
+
+# Public Meteo-France bucket (DRIAS, EXPLORE2), only run when the environment
+# variable KCLOUD_TEST_ONLINE is set (read only tests).
+test_that("the public DRIAS S3 bucket can be listed and read", {
+  skip_if(!nzchar(Sys.getenv("KCLOUD_TEST_ONLINE")),
+          "KCLOUD_TEST_ONLINE is not set")
+  skip_on_cran()
+  local_cache()
+  st <- cloud_s3("meteofrance-drias",
+                 endpoint = "https://object.files.data.gouv.fr",
+                 anonymous = TRUE)
+  expect_true("EXPLORE2-Hydro/" %in% cloud_list(st)$path)
+  files <- cloud_list(st, "EXPLORE2-Hydro/EXPLORE2-2024_SIM2/",
+                      recursive = TRUE)
+  files <- files[!files$is_dir & files$size > 0, ]
+  expect_gt(nrow(files), 0)
+  f <- files[which.min(files$size), ]
+  p <- suppressMessages(cloud_path(st, f$path))
+  expect_equal(file.size(p), f$size)
+  expect_true(cloud_exists(st, f$path))
+})

@@ -56,6 +56,22 @@ st <- cloud_nextcloud("https://nextcloud.example.org", user = "me",
 cloud_upload(st, "outputs/", "run_01/")
 ```
 
+## S3
+
+Any S3 bucket works the same way, for example the public bucket of
+Meteo-France (DRIAS and EXPLORE2 climate projections):
+
+```r
+st <- cloud_s3("meteofrance-drias",
+               endpoint = "https://object.files.data.gouv.fr",
+               anonymous = TRUE)
+cloud_list(st, "EXPLORE2-Hydro/", recursive = TRUE)  # 1.8 TB, a few seconds
+```
+
+With credentials, set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+(never write them in a script). A recursive listing is parallel and adapts
+to the shape of the bucket, so it stays fast with millions of keys.
+
 ## Configuration
 
 Describe the storages in the `config.yml` of a package or a project:

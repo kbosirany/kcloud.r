@@ -60,6 +60,7 @@ cloud_from_config(cfg)
 \seealso{
 Other storages:
 \code{\link[=cloud_local]{cloud_local()}},
-\code{\link[=cloud_nextcloud]{cloud_nextcloud()}}
+\code{\link[=cloud_nextcloud]{cloud_nextcloud()}},
+\code{\link[=cloud_s3]{cloud_s3()}}
 }
 \concept{storages}

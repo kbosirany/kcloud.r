@@ -77,6 +77,7 @@ cloud_nextcloud("https://nextcloud.example.org", user = "me",
 \seealso{
 Other storages:
 \code{\link[=cloud_from_config]{cloud_from_config()}},
-\code{\link[=cloud_local]{cloud_local()}}
+\code{\link[=cloud_local]{cloud_local()}},
+\code{\link[=cloud_s3]{cloud_s3()}}
 }
 \concept{storages}

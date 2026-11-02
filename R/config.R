@@ -202,7 +202,7 @@ storage_from_spec <- function(spec, name) {
     backend,
     local = cloud_local,
     nextcloud = cloud_nextcloud,
-    s3 = ,
+    s3 = cloud_s3,
     rclone = stop("The ", backend, " backend is not implemented yet.",
                   call. = FALSE),
     stop("Unknown backend for the storage '", name, "': ", backend,

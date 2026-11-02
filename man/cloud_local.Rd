@@ -30,6 +30,7 @@ st
 \seealso{
 Other storages:
 \code{\link[=cloud_from_config]{cloud_from_config()}},
-\code{\link[=cloud_nextcloud]{cloud_nextcloud()}}
+\code{\link[=cloud_nextcloud]{cloud_nextcloud()}},
+\code{\link[=cloud_s3]{cloud_s3()}}
 }
 \concept{storages}

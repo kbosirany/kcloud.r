@@ -101,7 +101,7 @@ test_that("secrets, unknown keys and backends are refused", {
 
   expect_error(cloud_from_config(list(backend = "local", root = "/d",
                                       typo = 1)), "Unknown keys.*typo")
-  expect_error(cloud_from_config(list(backend = "s3")), "not implemented")
+  expect_error(cloud_from_config(list(backend = "rclone")), "not implemented")
   expect_error(cloud_from_config(list(backend = "ftp")), "Unknown backend")
 })
 
